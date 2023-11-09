@@ -63,8 +63,8 @@
 #define MAX_RPM_TURN 30             // in RPM for rotational movement
 #define WHEEL_RADIUS 5.0            // in cm
 #define WHEEL_DISTANCE 33.0         // in cm
-#define MAX_DISTANCE 200            // in cm (maximum distance for ultrasonic)
-#define MAX_PWM 200                  // saturation PWM for action control (0-255)
+#define DISTANCE 200                // in cm (maximum distance for ultrasonic)
+#define MAX_PWM 200                 // saturation PWM for action control (0-255)
 #define ARMED 0x00
 #define DISARMED 0x01
 
@@ -82,11 +82,11 @@ Motor LeftMotor(LEFT_MOTOR_LEN_PIN, LEFT_MOTOR_REN_PIN, LEFT_MOTOR_PWM_PIN);
 Encoder RightEncoder(RIGHT_ENC_PIN_B, RIGHT_ENC_PIN_A); //it is inverted to get a right rotation sign
 Encoder LeftEncoder(LEFT_ENC_PIN_A, LEFT_ENC_PIN_B);
 
-LPF Ch_1_lpf(RECEIVER_CUT_OFF);
-LPF Ch_2_lpf(RECEIVER_CUT_OFF);
+LPF Ch_1_lpf(RECEIVER_LPF_CUT_OFF_FREQ);
+LPF Ch_2_lpf(RECEIVER_LPF_CUT_OFF_FREQ);
 
-LPF RightRPM_lpf(ENCODER_CUT_OFF);
-LPF LeftRPM_lpf(ENCODER_CUT_OFF);
+LPF RightRPM_lpf(ENC_LPF_CUT_OFF_FREQ);
+LPF LeftRPM_lpf(ENC_LPF_CUT_OFF_FREQ);
 
 pidIr RightMotorPID(KP_RIGHT_MOTOR, KI_RIGHT_MOTOR, KD_RIGHT_MOTOR);
 pidIr LeftMotorPID(KP_LEFT_MOTOR, KI_LEFT_MOTOR, KD_LEFT_MOTOR);
@@ -220,7 +220,7 @@ void update_cmd(){
     digitalWrite(RED_LED, LOW);
     digitalWrite(BLUE_LED, LOW);
   } else{ // Armed condition
-    if(pwm_in[3] < 1600){
+    if(receiver_ch_value[3] < 1600){
       //----------------------------Open loop-----------------------------//
       move_value = tuneReceiverSignaltoRPM(receiver_ch_filtered[1], MAX_PWM);
       turn_value = tuneReceiverSignaltoRPM(receiver_ch_filtered[2], MAX_PWM);
@@ -253,7 +253,7 @@ void update_cmd(){
       } else if (target_position_ == 3 && target_distance_ > DISTANCE){
         move_forward();
       } else {
-        vehicle_stop()
+        vehicle_stop();
       }
       digitalWrite(RED_LED, HIGH);
       digitalWrite(BLUE_LED, LOW);
@@ -527,7 +527,6 @@ void debug(){
     #ifdef EKF_DATA
     Serial.print(velocity_right); Serial.print(",");
     Serial.print(velocity_left); Serial.print(",");
-    Serial.print(data_id);
     #endif
 
     Serial.println();
