@@ -1,3 +1,4 @@
+#include <Wire.h>
 #include <ros.h>
 #include <follower/TargetState.h>
 
@@ -65,8 +66,9 @@
 #define WHEEL_DISTANCE 33.0         // in cm
 #define DISTANCE 200                // in cm (maximum distance for ultrasonic)
 #define MAX_PWM 200                 // saturation PWM for action control (0-255)
-#define ARMED 0x00
-#define DISARMED 0x01
+#define ARMED 0x00                  // armed condition
+#define DISARMED 0x01               // disarmed condition
+#define HMC5983_ADDRESS 0x1E        // magnetometer I2C address
 
 #define KP_RIGHT_MOTOR 0.325
 #define KI_RIGHT_MOTOR 0.0
@@ -88,8 +90,23 @@ LPF Ch_2_lpf(RECEIVER_LPF_CUT_OFF_FREQ);
 LPF RightRPM_lpf(ENC_LPF_CUT_OFF_FREQ);
 LPF LeftRPM_lpf(ENC_LPF_CUT_OFF_FREQ);
 
+LPF dlpf(1);
+
 pidIr RightMotorPID(KP_RIGHT_MOTOR, KI_RIGHT_MOTOR, KD_RIGHT_MOTOR);
 pidIr LeftMotorPID(KP_LEFT_MOTOR, KI_LEFT_MOTOR, KD_LEFT_MOTOR);
+
+typedef struct magnetometer {
+  int x_msb;
+  int x_lsb;
+  int z_msb;
+  int z_lsb;
+  int y_msb;
+  int y_lsb;
+
+  float hx;
+  float hz;
+  float hy;
+};
 
 void callbackRA(){RightEncoder.doEncoderA();}
 void callbackRB(){RightEncoder.doEncoderB();}
@@ -97,11 +114,13 @@ void callbackLA(){LeftEncoder.doEncoderA();}
 void callbackLB(){LeftEncoder.doEncoderB();}
 
 uint16_t receiver_ch_value[9]; //PIN_CH_1 --> receiver_ch_value[1], and so on.
-
 uint16_t receiver_ch_filtered[9]; //PIN_CH_1 --> receiver_ch_value[1], and so on.
 
 float right_rpm_filtered;
 float left_rpm_filtered;
+
+float heading = 0;
+float heading_filtered = 0;
 
 int move_value;
 int turn_value;
@@ -140,6 +159,7 @@ ros::Subscriber<follower::TargetState> sub("rover_command", callback_function);
 
 void setup(){
     Serial.begin(57600);
+    Wire.begin();
 
     //Initiate ROS node
     nh.initNode();
@@ -345,6 +365,49 @@ float wrapAngleFloatRadian(float value){
     } else {
         return value;
     }
+}
+
+void write_hmc5983(int reg, int val){
+    Wire.beginTransmission(HMC5983_ADDRESS);
+    Wire.write(0x3C);
+    Wire.write(reg);
+    Wire.write(val);
+    Wire.endTransmission();
+}
+
+void read_hmc5983(int reg){
+    Wire.beginTransmission(HMC5983_ADDRESS);
+    Wire.write(0x3D);
+    Wire.write(reg);
+    Wire.endTransmission();
+}
+
+void get_heading(){
+    write_hmc5983(0x00, 0x10);
+    write_hmc5983(0x01, 0x20);
+    write_hmc5983(0x02, 0x01);
+    read_hmc5983(0x03);
+  
+    Wire.requestFrom(HMC5983_ADDRESS, 6);
+    while(Wire.available()){
+        magnetometer.x_msb = Wire.read();
+        magnetometer.x_lsb = Wire.read();
+        magnetometer.z_msb = Wire.read();
+        magnetometer.z_lsb = Wire.read();
+        magnetometer.y_msb = Wire.read();
+        magnetometer.y_lsb = Wire.read();
+    }
+
+    magnetometer.hx = (magnetometer.x_msb << 8) + magnetometer.x_lsb;
+    magnetometer.hz = (magnetometer.z_msb << 8) + magnetometer.z_lsb;
+    magnetometer.hy = (magnetometer.y_msb << 8) + magnetometer.y_lsb;
+
+    if(magnetometer.hx > 0x07FF) magnetometer.hx = 0xFFFF - magnetometer.hx;
+    if(magnetometer.hz > 0x07FF) magnetometer.hz = 0xFFFF - magnetometer.hz;
+    if(magnetometer.hy > 0x07FF) magnetometer.hy = 0xFFFF - magnetometer.hy;
+
+    heading = atan2(magnetometer.hy, magnetometer.hx) * 180 / PI; //in deg
+    heading_filtered = dlpf.filter(heading, dt);
 }
 
 void debugHeader(){
