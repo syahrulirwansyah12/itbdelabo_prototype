@@ -95,7 +95,7 @@ LPF dlpf(1);
 pidIr RightMotorPID(KP_RIGHT_MOTOR, KI_RIGHT_MOTOR, KD_RIGHT_MOTOR);
 pidIr LeftMotorPID(KP_LEFT_MOTOR, KI_LEFT_MOTOR, KD_LEFT_MOTOR);
 
-typedef struct magnetometer {
+struct magnetometer {
   int x_msb;
   int x_lsb;
   int z_msb;
@@ -107,6 +107,8 @@ typedef struct magnetometer {
   float hz;
   float hy;
 };
+
+magnetometer magnetometer;
 
 void callbackRA(){RightEncoder.doEncoderA();}
 void callbackRB(){RightEncoder.doEncoderB();}
