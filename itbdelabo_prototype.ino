@@ -1,6 +1,7 @@
 #include <Wire.h>
 #include <ros.h>
-#include <follower/TargetState.h>
+#include <follower/HardwareCommand.h>
+#include <Servo.h>
 
 #include "Motor.h"
 #include "Encoder.h"
@@ -53,6 +54,12 @@
 // LED PIN
 #define RED_LED  30
 #define BLUE_LED 31
+
+// SERVO
+#define CAM_SERVO 2
+#define MAX_SERVO_POS 175
+#define MIN_SERVO_POS 125
+#define INCREMENT_POS 10
 
 // Constants
 #define LOOP_TIME 10                // in milliseconds
@@ -143,21 +150,24 @@ unsigned long time_now = 0;
 unsigned long time_last = 0;
 float dt;
 
+Servo camServo;
+int servo_pos = MAX_SERVO_POS;
+
 //ROS Communication
 ros::NodeHandle nh;
 
-// Varible for target position and distaance
-uint16_t target_position_ = 0;
-float target_distance_ = -1;
+// Varible for hardware command
+uint8_t movement_command_ = 0;
+uint8_t cam_angle_command_ = 0;
 
 // Callback function that handles data subscribing
-void callback_function( const follower::TargetState& msg){
-  target_position_ = msg.target_position;
-  target_distance_ = msg.target_distance;
+void callback_function( const follower::HardwareCommand& msg){
+  movement_command_ = msg.movement_command;
+  cam_angle_command_ = msg.cam_angle_command;
 }
 
-// Create subscriber for target info
-ros::Subscriber<follower::TargetState> sub("rover_command", callback_function);
+// Create subscriber for hardware command info
+ros::Subscriber<follower::HardwareCommand> sub("hardware_command", callback_function);
 
 void setup(){
     Serial.begin(57600);
@@ -178,6 +188,12 @@ void setup(){
     pinMode(RED_LED, OUTPUT);
     pinMode(BLUE_LED, OUTPUT);
 
+    pinMode(RED_LED, OUTPUT);
+    pinMode(BLUE_LED, OUTPUT);
+
+    camServo.write(servo_pos);
+    camServo.attach(CAM_SERVO);
+
     debugHeader();
 
     delay(2000);
@@ -194,6 +210,9 @@ void loop(){
 
         //Calculate the robot position and velocity
         calculatePose();
+
+        update_failsafe();
+        update_cmd();
         
         time_last = time_now;
         debug();
@@ -268,11 +287,11 @@ void update_cmd(){
       digitalWrite(BLUE_LED, HIGH);
     } else {
       // Part to control vehicle heading based on the target position
-      if (target_position_ == 1){
+      if (movement_command_== 1){
         rotate_left();
-      } else if (target_position_ == 2){
+      } else if (movement_command_ == 2){
         rotate_right();
-      } else if (target_position_ == 3 && target_distance_ > DISTANCE){
+      } else if (movement_command_ == 3){
         move_forward();
       } else {
         vehicle_stop();
@@ -282,6 +301,8 @@ void update_cmd(){
     }
     // Write to motor
     vehicleGo(right_pwm, left_pwm);
+
+    write_servo();
   }
 }
 
@@ -337,7 +358,7 @@ void calculatePose(){
     pose_y = pose_y + WHEEL_RADIUS/2.0 * (delta_angle_right + delta_angle_left) * cos(pose_theta);
     pose_theta = pose_theta + (delta_angle_right - delta_angle_left) * WHEEL_RADIUS/WHEEL_DISTANCE;
 
-    pose_theta = wrapAngleFloatDegree(pose_theta);
+    pose_theta = wrapAngleRadian(pose_theta);
 
     RightEncoder.measureOmega();
     LeftEncoder.measureOmega();
@@ -349,21 +370,21 @@ void calculatePose(){
     velocity_left = left_rpm_filtered * PI/30.0 * WHEEL_RADIUS;
 }
 
-float wrapAngleFloatDegree(float value){
+float wrapAngleDegree(float value){
     if(value >= 2*360){
-        return wrapAngleFloatDegree(value - 360);
+        return wrapAngleDegree(value - 360);
     } else if(value < 0){
-        return wrapAngleFloatDegree(value + 360);
+        return wrapAngleDegree(value + 360);
     } else {
         return value;
     }
 }
 
-float wrapAngleFloatRadian(float value){
+float wrapAngleRadian(float value){
     if(value >= 2*PI){
-        return wrapAngleFloatRadian(value - 2 * PI);
+        return wrapAngleRadian(value - 2 * PI);
     } else if(value < 0){
-        return wrapAngleFloatRadian(value + 2 * PI);
+        return wrapAngleRadian(value + 2 * PI);
     } else {
         return value;
     }
@@ -410,6 +431,39 @@ void get_heading(){
 
     heading = atan2(magnetometer.hy, magnetometer.hx) * 180 / PI; //in deg
     heading_filtered = dlpf.filter(heading, dt);
+}
+
+void write_servo(){
+  // RC mode
+  if (receiver_ch_value[3] < 1600) {
+    if (receiver_ch_value[5] >= 980 && receiver_ch_value[5] <= 2020){
+      servo_pos = map(receiver_ch_value[5], 980, 2020, MIN_SERVO_POS + 5, MAX_SERVO_POS - 5);
+      camServo.write(servo_pos);
+    } else if (receiver_ch_value[5] > 2020) {
+      // most up cam position
+      servo_pos = MAX_SERVO_POS;
+      camServo.write(servo_pos);
+    } else {
+      // most straight cam position
+      servo_pos = MIN_SERVO_POS;
+      camServo.write(servo_pos);
+    }
+  }
+  // PC Mode (Auto)
+  else {
+    if (cam_angle_command_ == 1) {
+      // Up
+      servo_pos = servo_pos + INCREMENT_POS;
+      servo_pos = min(servo_pos, MAX_SERVO_POS);
+      camServo.write(servo_pos);
+    }
+    else if (cam_angle_command_ == 2) {
+      // Down
+      servo_pos = servo_pos - INCREMENT_POS;
+      servo_pos = max(servo_pos, MIN_SERVO_POS);
+      camServo.write(servo_pos);
+    }
+  }
 }
 
 void debugHeader(){
