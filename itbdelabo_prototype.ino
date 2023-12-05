@@ -25,30 +25,30 @@
 
 
 // Receiver PIN
-#define PIN_CH_1 42
-#define PIN_CH_2 44
-#define PIN_CH_3 46
-#define PIN_CH_4 48
-#define PIN_CH_5 43
-#define PIN_CH_6 45
-#define PIN_CH_7 47
-#define PIN_CH_8 49
+#define PIN_CH_1 A8
+#define PIN_CH_2 A9
+#define PIN_CH_3 A10
+#define PIN_CH_4 A11
+#define PIN_CH_5 A12
+#define PIN_CH_6 A13
+#define PIN_CH_7 A14
+#define PIN_CH_8 A15
 
 // Motor PIN
-#define RIGHT_MOTOR_REN_PIN 6
+#define RIGHT_MOTOR_REN_PIN 4
 #define RIGHT_MOTOR_LEN_PIN 5
-#define RIGHT_MOTOR_PWM_PIN 8
+#define RIGHT_MOTOR_PWM_PIN 9
 
-#define LEFT_MOTOR_REN_PIN 9
-#define LEFT_MOTOR_LEN_PIN 10
-#define LEFT_MOTOR_PWM_PIN 7
+#define LEFT_MOTOR_REN_PIN 6
+#define LEFT_MOTOR_LEN_PIN 7
+#define LEFT_MOTOR_PWM_PIN 8
 
 // Encoder PIN
-#define RIGHT_ENC_PIN_A 11
-#define RIGHT_ENC_PIN_B 12
+#define RIGHT_ENC_PIN_A 50
+#define RIGHT_ENC_PIN_B 51
 
-#define LEFT_ENC_PIN_A A8
-#define LEFT_ENC_PIN_B A9
+#define LEFT_ENC_PIN_A 11
+#define LEFT_ENC_PIN_B 10
 
 // LED PIN
 #define RED_LED  30
@@ -60,23 +60,23 @@
 #define RECEIVER_LPF_CUT_OFF_FREQ 1 // in Hertz (Hz)
 #define ENC_LPF_CUT_OFF_FREQ 3      // in Hertz (Hz)
 #define PWM_THRESHOLD 150           // in microseconds of receiver signal
-#define MAX_RPM_MOVE 40             // in RPM for longitudinal movement
-#define MAX_RPM_TURN 30             // in RPM for rotational movement
+#define MAX_RPM_MOVE 120             // in RPM for longitudinal movement
+#define MAX_RPM_TURN 50             // in RPM for rotational movement
 #define WHEEL_RADIUS 5.0            // in cm
 #define WHEEL_DISTANCE 33.0         // in cm
-#define DISTANCE 200                // in cm (maximum distance for ultrasonic)
-#define MAX_PWM 200                 // saturation PWM for action control (0-255)
+#define DISTANCE 200                // in cm
+#define MAX_PWM 250                 // saturation PWM for action control (0-255)
 #define ARMED 0x00                  // armed condition
 #define DISARMED 0x01               // disarmed condition
 #define HMC5983_ADDRESS 0x1E        // magnetometer I2C address
 
-#define KP_RIGHT_MOTOR 0.325
-#define KI_RIGHT_MOTOR 0.0
+#define KP_RIGHT_MOTOR 3.0
+#define KI_RIGHT_MOTOR 0.022
 #define KD_RIGHT_MOTOR 0.0
 
-#define KP_LEFT_MOTOR 0.325
-#define KI_LEFT_MOTOR 0.0
-#define KD_LEFT_MOTOR 0.0
+#define KP_LEFT_MOTOR 3.0
+#define KI_LEFT_MOTOR 0.022
+#define KD_RIGHT_MOTOR 0.0
 
 Motor RightMotor(RIGHT_MOTOR_REN_PIN, RIGHT_MOTOR_LEN_PIN, RIGHT_MOTOR_PWM_PIN);
 Motor LeftMotor(LEFT_MOTOR_LEN_PIN, LEFT_MOTOR_REN_PIN, LEFT_MOTOR_PWM_PIN);
@@ -243,6 +243,7 @@ void update_cmd(){
     digitalWrite(BLUE_LED, LOW);
   } else{ // Armed condition
     if(receiver_ch_value[3] < 1600){
+      /*
       //----------------------------Open loop-----------------------------//
       move_value = tuneReceiverSignaltoRPM(receiver_ch_filtered[1], MAX_PWM);
       turn_value = tuneReceiverSignaltoRPM(receiver_ch_filtered[2], MAX_PWM);
@@ -250,8 +251,9 @@ void update_cmd(){
       right_pwm = move_value - turn_value;
       left_pwm = move_value + turn_value;
       //------------------------------------------------------------------//
+      */
 
-      /*
+      
       //---------------------------Close loop-----------------------------//
       move_value = tuneReceiverSignaltoRPM(receiver_ch_filtered[1], MAX_RPM_MOVE);
       turn_value = tuneReceiverSignaltoRPM(receiver_ch_filtered[2], MAX_RPM_TURN);
@@ -262,7 +264,7 @@ void update_cmd(){
       right_pwm = RightMotorPID.compute(right_rpm_target, right_rpm_filtered, MAX_PWM, dt);
       left_pwm = LeftMotorPID.compute(left_rpm_target, left_rpm_filtered, MAX_PWM, dt);
       //------------------------------------------------------------------//
-      */
+      
       
       digitalWrite(RED_LED, LOW);
       digitalWrite(BLUE_LED, HIGH);
