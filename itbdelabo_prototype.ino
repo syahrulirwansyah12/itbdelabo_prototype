@@ -1,7 +1,9 @@
+#include <RC_Receiver.h>
 #include <Wire.h>
 #include <ros.h>
 #include <follower/HardwareCommand.h>
 #include <Servo.h>
+
 
 #include "Motor.h"
 #include "Encoder.h"
@@ -17,12 +19,12 @@
 //#define MOTOR_SPEED_PPS
 //#define MOTOR_SPEED_DPS
 //#define MOTOR_SPEED_RPS
-//#define MOTOR_SPEED_RPM
-//#define TARGET_RPM
+#define MOTOR_SPEED_RPM
+#define TARGET_RPM
 //#define PWM_RESPONSE
 //#define VEHICLE_POSITION
 //#define VEHICLE_SPEED
-#define EKF_DATA
+//#define EKF_DATA
 
 
 // Receiver PIN
@@ -67,8 +69,8 @@
 #define RECEIVER_LPF_CUT_OFF_FREQ 1 // in Hertz (Hz)
 #define ENC_LPF_CUT_OFF_FREQ 3      // in Hertz (Hz)
 #define PWM_THRESHOLD 150           // in microseconds of receiver signal
-#define MAX_RPM_MOVE 120             // in RPM for longitudinal movement
-#define MAX_RPM_TURN 50             // in RPM for rotational movement
+#define MAX_RPM_MOVE 180             // in RPM for longitudinal movement
+#define MAX_RPM_TURN 70  // in RPM for rotational movement
 #define WHEEL_RADIUS 5.0            // in cm
 #define WHEEL_DISTANCE 33.0         // in cm
 #define DISTANCE 200                // in cm
@@ -77,13 +79,13 @@
 #define DISARMED 0x01               // disarmed condition
 #define HMC5983_ADDRESS 0x1E        // magnetometer I2C address
 
-#define KP_RIGHT_MOTOR 3.0
-#define KI_RIGHT_MOTOR 0.022
-#define KD_RIGHT_MOTOR 0.0
+#define KP_RIGHT_MOTOR 1.0
+#define KI_RIGHT_MOTOR 0.1
+#define KD_RIGHT_MOTOR 10.0
 
-#define KP_LEFT_MOTOR 3.0
-#define KI_LEFT_MOTOR 0.022
-#define KD_RIGHT_MOTOR 0.0
+#define KP_LEFT_MOTOR 1.0
+#define KI_LEFT_MOTOR 0.1
+#define KD_LEFT_MOTOR 10.0
 
 Motor RightMotor(RIGHT_MOTOR_REN_PIN, RIGHT_MOTOR_LEN_PIN, RIGHT_MOTOR_PWM_PIN);
 Motor LeftMotor(LEFT_MOTOR_LEN_PIN, LEFT_MOTOR_REN_PIN, LEFT_MOTOR_PWM_PIN);
@@ -101,6 +103,8 @@ LPF dlpf(1);
 
 pidIr RightMotorPID(KP_RIGHT_MOTOR, KI_RIGHT_MOTOR, KD_RIGHT_MOTOR);
 pidIr LeftMotorPID(KP_LEFT_MOTOR, KI_LEFT_MOTOR, KD_LEFT_MOTOR);
+
+//RC_Receiver receiver(PIN_CH_1, PIN_CH_2, PIN_CH_3, PIN_CH_4, PIN_CH_5, PIN_CH_6, PIN_CH_7, PIN_CH_8);
 
 struct magnetometer {
   int x_msb;
@@ -231,23 +235,27 @@ void setupPinReceiver(){
 }
 
 void getReceiverSignal(){
+    //int a = millis();
     receiver_ch_value[1] = pulseIn(PIN_CH_1, HIGH, PERIOD_TIME);
     receiver_ch_value[2] = pulseIn(PIN_CH_2, HIGH, PERIOD_TIME);
     receiver_ch_value[3] = pulseIn(PIN_CH_3, HIGH, PERIOD_TIME);
     receiver_ch_value[4] = pulseIn(PIN_CH_4, HIGH, PERIOD_TIME);
     receiver_ch_value[5] = pulseIn(PIN_CH_5, HIGH, PERIOD_TIME);
-    receiver_ch_value[6] = pulseIn(PIN_CH_6, HIGH, PERIOD_TIME);
-    receiver_ch_value[7] = pulseIn(PIN_CH_7, HIGH, PERIOD_TIME);
-    receiver_ch_value[8] = pulseIn(PIN_CH_8, HIGH, PERIOD_TIME);
+    //receiver_ch_value[6] = pulseIn(PIN_CH_6, HIGH, PERIOD_TIME);
+    //receiver_ch_value[7] = pulseIn(PIN_CH_7, HIGH, PERIOD_TIME);
+    //receiver_ch_value[8] = pulseIn(PIN_CH_8, HIGH, PERIOD_TIME);
 
-    for(int i = 1; i <= 8; i++){
+    for(byte i = 1; i <= 5; i++){
+      //receiver_ch_value[i] = constrain(receiver.getRaw(i), 1000, 2000);
       receiver_ch_value[i] = constrain(receiver_ch_value[i], 1000, 2000);
     }
+    //int b = millis();
+    //Serial.print(b-a);
 }
 
 void update_failsafe(){
   // It is chosen because if RC is disconnected, the value is 0
-  if(receiver_ch_value[4]){
+  if(receiver_ch_value[4] > 1500){
     failsafe = ARMED;
   } else{
     failsafe = DISARMED;
@@ -256,12 +264,12 @@ void update_failsafe(){
 
 void update_cmd(){
   if(failsafe == DISARMED){ // Disarmed condition
-    right_pwm = 0;
-    left_pwm = 0;
+    vehicle_stop();
+    
     digitalWrite(RED_LED, LOW);
     digitalWrite(BLUE_LED, LOW);
   } else{ // Armed condition
-    if(receiver_ch_value[3] < 1600){
+    if(receiver_ch_value[3] < 1400){
       /*
       //----------------------------Open loop-----------------------------//
       move_value = tuneReceiverSignaltoRPM(receiver_ch_filtered[1], MAX_PWM);
@@ -274,16 +282,49 @@ void update_cmd(){
 
       
       //---------------------------Close loop-----------------------------//
-      move_value = tuneReceiverSignaltoRPM(receiver_ch_filtered[1], MAX_RPM_MOVE);
-      turn_value = tuneReceiverSignaltoRPM(receiver_ch_filtered[2], MAX_RPM_TURN);
+      //move_value = tuneReceiverSignaltoRPM(receiver_ch_filtered[1], MAX_RPM_MOVE);
+      //turn_value = tuneReceiverSignaltoRPM(receiver_ch_filtered[2], MAX_RPM_TURN);
 
-      right_rpm_target = move_value + turn_value;
-      left_rpm_target = move_value - turn_value;
+      
+      if(receiver_ch_filtered[1] >= 1500 + PWM_THRESHOLD){
+          move_value = map(receiver_ch_filtered[1], 1500 + PWM_THRESHOLD, 2000, 0, MAX_RPM_MOVE);
+      } else if(receiver_ch_filtered[1] <= 1500 - PWM_THRESHOLD){
+          move_value = map(receiver_ch_filtered[1], 1500 - PWM_THRESHOLD, 1000, 0, -MAX_RPM_MOVE+90);
+      } else {
+          move_value = 0;
+      }
 
-      right_pwm = RightMotorPID.compute(right_rpm_target, right_rpm_filtered, MAX_PWM, dt);
-      left_pwm = LeftMotorPID.compute(left_rpm_target, left_rpm_filtered, MAX_PWM, dt);
+      if(receiver_ch_filtered[2] >= 1450 + PWM_THRESHOLD){
+          turn_value = map(receiver_ch_filtered[2], 1450 + PWM_THRESHOLD, 1950, 0, MAX_RPM_TURN+80);
+      } else if(receiver_ch_filtered[2] <= 1450 - PWM_THRESHOLD){
+          turn_value = map(receiver_ch_filtered[2], 1450 - PWM_THRESHOLD, 1000, 0, -MAX_RPM_TURN);
+      } else {
+          turn_value = 0;
+      }
+      
+
+      right_rpm_target = move_value - turn_value;
+      left_rpm_target = move_value + turn_value;
+      
+      if(right_rpm_target == 0 && left_rpm_target == 0){
+          right_pwm = 0;
+          left_pwm = 0;
+          vehicle_stop();
+      } else if (right_rpm_target == 0 && left_rpm_target != 0) {
+          right_pwm = 0;
+          RightMotorPID.reset();
+          left_pwm = LeftMotorPID.compute(left_rpm_target, left_rpm_filtered, MAX_PWM, 10);
+      } else if (right_rpm_target != 0 && left_rpm_target == 0) {
+          left_pwm = 0;
+          LeftMotorPID.reset();
+          right_pwm = RightMotorPID.compute(right_rpm_target, right_rpm_filtered, MAX_PWM, 10);
+      } else {
+          right_pwm = RightMotorPID.compute(right_rpm_target, right_rpm_filtered, MAX_PWM, 10);
+          left_pwm = LeftMotorPID.compute(left_rpm_target, left_rpm_filtered, MAX_PWM, 10);
+      }
       //------------------------------------------------------------------//
       
+      vehicleGo(right_pwm, left_pwm);
       
       digitalWrite(RED_LED, LOW);
       digitalWrite(BLUE_LED, HIGH);
@@ -301,8 +342,6 @@ void update_cmd(){
       digitalWrite(RED_LED, HIGH);
       digitalWrite(BLUE_LED, LOW);
     }
-    // Write to motor
-    vehicleGo(right_pwm, left_pwm);
 
     write_servo();
   }
@@ -563,10 +602,10 @@ void debugHeader(){
 
 void debug(){
     #ifdef RECEIVER_RAW
-    Serial.print(ch_1_value); Serial.print("\t");
-    Serial.print(ch_2_value); Serial.print("\t");
-    Serial.print(ch_3_value); Serial.print("\t");
-    Serial.print(ch_4_value); Serial.print("\t");
+    Serial.print(receiver_ch_value[1]); Serial.print("\t");
+    Serial.print(receiver_ch_value[2]); Serial.print("\t");
+    Serial.print(receiver_ch_value[3]); Serial.print("\t");
+    Serial.print(receiver_ch_value[4]); Serial.print("\t");
     #endif
 
     #ifdef MOTOR_ANGLE_PULSE
@@ -615,8 +654,8 @@ void debug(){
     #endif
 
     #ifdef PWM_RESPONSE
-    Serial.print(right_pwm); Serial.print("\t");
-    Serial.print(left_pwm); Serial.print("\t");
+    Serial.print(right_pwm/2.0); Serial.print("\t");
+    Serial.print(left_pwm/2.0); Serial.print("\t");
     #endif
 
     #ifdef ERROR_PID

@@ -38,7 +38,9 @@ void Encoder::start(void(*userFuncA)(void),void(*userFuncB)(void)){
       attachInterrupt(digitalPinToInterrupt(getPinA()), userFuncA, CHANGE);
       attachInterrupt(digitalPinToInterrupt(getPinB()), userFuncB, CHANGE);
     } else {
-      Serial.print("Get the right pin.");
+      //Serial.print("Get the right pin.");
+      attachPCINT(digitalPinToPCINT(getPinA()), userFuncA, CHANGE);
+      attachPCINT(digitalPinToPCINT(getPinB()), userFuncB, CHANGE);
     }   
 };
 
