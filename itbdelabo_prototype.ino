@@ -1,7 +1,7 @@
 #include <RC_Receiver.h>
 #include <Wire.h>
 #include <ros.h>
-#include <follower/HardwareCommand.h>
+#include <slam_itbdelabo/HardwareCommand.h>
 #include <Servo.h>
 
 
@@ -163,15 +163,26 @@ ros::NodeHandle nh;
 // Varible for hardware command
 uint8_t movement_command_ = 0;
 uint8_t cam_angle_command_ = 0;
+float right_motor_speed_ = 0;
+float left_motor_speed_ = 0;
+
+int a = 0;
+int b = 0;
 
 // Callback function that handles data subscribing
-void callback_function( const follower::HardwareCommand& msg){
+void callback_function( const slam_itbdelabo::HardwareCommand& msg){
   movement_command_ = msg.movement_command;
   cam_angle_command_ = msg.cam_angle_command;
+  right_motor_speed_ = msg.right_motor_speed;
+  left_motor_speed_ = msg.left_motor_speed;
+
+  String OmegaString = String(String(b-a) + ", Left RPM: " + String(left_motor_speed_,3) + " RPM, Right RPM: " + String(right_motor_speed_,3) + " RPM.");
+  char OmegaInfo[100]; OmegaString.toCharArray(OmegaInfo, 100);
+  nh.loginfo(OmegaInfo);
 }
 
 // Create subscriber for hardware command info
-ros::Subscriber<follower::HardwareCommand> sub("hardware_command", callback_function);
+ros::Subscriber<slam_itbdelabo::HardwareCommand> sub("hardware_command", callback_function);
 
 void setup(){
     Serial.begin(57600);
@@ -207,19 +218,25 @@ void loop(){
     time_now = millis();
     if(time_now - time_last >= LOOP_TIME){
         dt = time_now - time_last;
+        
         getReceiverSignal();
-
+        
         receiver_ch_filtered[1] = Ch_1_lpf.filter(receiver_ch_value[1], dt);
         receiver_ch_filtered[2] = Ch_2_lpf.filter(receiver_ch_value[2], dt);
 
         //Calculate the robot position and velocity
+        
         calculatePose();
+        
 
+        a = millis();
         update_failsafe();
         update_cmd();
+        b = millis();
         
         time_last = time_now;
         debug();
+        nh.spinOnce();
     }
 }
 
@@ -302,7 +319,6 @@ void update_cmd(){
           turn_value = 0;
       }
       
-
       right_rpm_target = move_value - turn_value;
       left_rpm_target = move_value + turn_value;
       
@@ -330,39 +346,34 @@ void update_cmd(){
       digitalWrite(BLUE_LED, HIGH);
     } else {
       // Part to control vehicle heading based on the target position
-      if (movement_command_== 1){
-        rotate_left();
-      } else if (movement_command_ == 2){
-        rotate_right();
-      } else if (movement_command_ == 3){
-        move_forward();
+      right_rpm_target = right_motor_speed_;
+      left_rpm_target = left_motor_speed_;
+
+      if(right_rpm_target == 0 && left_rpm_target == 0){
+          right_pwm = 0;
+          left_pwm = 0;
+          vehicle_stop();
+      } else if (right_rpm_target == 0 && left_rpm_target != 0) {
+          right_pwm = 0;
+          RightMotorPID.reset();
+          left_pwm = LeftMotorPID.compute(left_rpm_target, left_rpm_filtered, MAX_PWM, 10);
+      } else if (right_rpm_target != 0 && left_rpm_target == 0) {
+          left_pwm = 0;
+          LeftMotorPID.reset();
+          right_pwm = RightMotorPID.compute(right_rpm_target, right_rpm_filtered, MAX_PWM, 10);
       } else {
-        vehicle_stop();
+          right_pwm = RightMotorPID.compute(right_rpm_target, right_rpm_filtered, MAX_PWM, 10);
+          left_pwm = LeftMotorPID.compute(left_rpm_target, left_rpm_filtered, MAX_PWM, 10);
       }
+
+      vehicleGo(right_pwm, left_pwm);
+      
       digitalWrite(RED_LED, HIGH);
       digitalWrite(BLUE_LED, LOW);
     }
 
     write_servo();
   }
-}
-
-void rotate_left(){
-  // Write down the algorithm so the vehicle rotate left
-  right_pwm = 1.0*MAX_PWM;
-  left_pwm = -1.0*MAX_PWM;
-}
-
-void rotate_right(){
-  // Write down the algorithm so the vehicle rotate right
-  right_pwm = -1.0*MAX_PWM;
-  left_pwm = 1.0*MAX_PWM;
-}
-
-void move_forward(){
-  // Write down the algorithm so the vehicle move forward
-  right_pwm = 1.0*MAX_PWM;
-  left_pwm = 1.0*MAX_PWM;
 }
 
 int tuneReceiverSignaltoRPM(int receiver_signal, int max_rpm){
