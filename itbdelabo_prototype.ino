@@ -1,4 +1,3 @@
-#include <RC_Receiver.h>
 #include <Wire.h>
 #include <ros.h>
 #include <slam_itbdelabo/HardwareCommand.h>
@@ -28,6 +27,7 @@
 
 
 // Receiver PIN
+#define NUM_CH 8
 #define PIN_CH_1 A8
 #define PIN_CH_2 A9
 #define PIN_CH_3 A10
@@ -126,6 +126,7 @@ void callbackRB(){RightEncoder.doEncoderB();}
 void callbackLA(){LeftEncoder.doEncoderA();}
 void callbackLB(){LeftEncoder.doEncoderB();}
 
+byte current_channel = 1;
 uint16_t receiver_ch_value[9]; //PIN_CH_1 --> receiver_ch_value[1], and so on.
 uint16_t receiver_ch_filtered[9]; //PIN_CH_1 --> receiver_ch_value[1], and so on.
 
@@ -176,7 +177,7 @@ void callback_function( const slam_itbdelabo::HardwareCommand& msg){
   right_motor_speed_ = msg.right_motor_speed;
   left_motor_speed_ = msg.left_motor_speed;
 
-  String OmegaString = String(String(b-a) + ", Left RPM: " + String(left_motor_speed_,3) + " RPM, Right RPM: " + String(right_motor_speed_,3) + " RPM.");
+  String OmegaString = String(String(dt) + ", Left RPM: " + String(left_motor_speed_,3) + " RPM, Right RPM: " + String(right_motor_speed_,3) + " RPM.");
   char OmegaInfo[100]; OmegaString.toCharArray(OmegaInfo, 100);
   nh.loginfo(OmegaInfo);
 }
@@ -218,21 +219,16 @@ void loop(){
     time_now = millis();
     if(time_now - time_last >= LOOP_TIME){
         dt = time_now - time_last;
-        
         getReceiverSignal();
         
         receiver_ch_filtered[1] = Ch_1_lpf.filter(receiver_ch_value[1], dt);
         receiver_ch_filtered[2] = Ch_2_lpf.filter(receiver_ch_value[2], dt);
 
         //Calculate the robot position and velocity
-        
         calculatePose();
-        
 
-        a = millis();
         update_failsafe();
         update_cmd();
-        b = millis();
         
         time_last = time_now;
         debug();
@@ -251,23 +247,41 @@ void setupPinReceiver(){
     pinMode(PIN_CH_8, INPUT);
 }
 
-void getReceiverSignal(){
-    //int a = millis();
-    receiver_ch_value[1] = pulseIn(PIN_CH_1, HIGH, PERIOD_TIME);
-    receiver_ch_value[2] = pulseIn(PIN_CH_2, HIGH, PERIOD_TIME);
-    receiver_ch_value[3] = pulseIn(PIN_CH_3, HIGH, PERIOD_TIME);
-    receiver_ch_value[4] = pulseIn(PIN_CH_4, HIGH, PERIOD_TIME);
-    receiver_ch_value[5] = pulseIn(PIN_CH_5, HIGH, PERIOD_TIME);
-    //receiver_ch_value[6] = pulseIn(PIN_CH_6, HIGH, PERIOD_TIME);
-    //receiver_ch_value[7] = pulseIn(PIN_CH_7, HIGH, PERIOD_TIME);
-    //receiver_ch_value[8] = pulseIn(PIN_CH_8, HIGH, PERIOD_TIME);
+void getReceiverSignal() {
+    receiver_ch_value[current_channel] = pulseIn(getChannelPin(current_channel), HIGH, PERIOD_TIME);
 
-    for(byte i = 1; i <= 5; i++){
-      //receiver_ch_value[i] = constrain(receiver.getRaw(i), 1000, 2000);
-      receiver_ch_value[i] = constrain(receiver_ch_value[i], 1000, 2000);
+    // Constrain the channel value within a specific range if needed
+    receiver_ch_value[current_channel] = constrain(receiver_ch_value[current_channel], 1000, 2000);
+
+    // Move to the next channel for the next loop iteration
+    current_channel++;
+    if (current_channel > NUM_CH) {
+        current_channel = 1; // Reset to the first channel if all channels are processed
     }
-    //int b = millis();
-    //Serial.print(b-a);
+}
+
+
+int getChannelPin(byte channel) {
+    switch (channel) {
+        case 1:
+            return PIN_CH_1;
+        case 2:
+            return PIN_CH_2;
+        case 3:
+            return PIN_CH_3;
+        case 4:
+            return PIN_CH_4;
+        case 5:
+            return PIN_CH_5;
+        case 6:
+            return PIN_CH_6;
+        case 7:
+            return PIN_CH_7;
+        case 8:
+            return PIN_CH_8;
+        default:
+            return -1;
+    }
 }
 
 void update_failsafe(){
@@ -281,6 +295,8 @@ void update_failsafe(){
 
 void update_cmd(){
   if(failsafe == DISARMED){ // Disarmed condition
+    right_pwm = 0;
+    left_pwm = 0;
     vehicle_stop();
     
     digitalWrite(RED_LED, LOW);
@@ -340,8 +356,6 @@ void update_cmd(){
       }
       //------------------------------------------------------------------//
       
-      vehicleGo(right_pwm, left_pwm);
-      
       digitalWrite(RED_LED, LOW);
       digitalWrite(BLUE_LED, HIGH);
     } else {
@@ -365,13 +379,10 @@ void update_cmd(){
           right_pwm = RightMotorPID.compute(right_rpm_target, right_rpm_filtered, MAX_PWM, 10);
           left_pwm = LeftMotorPID.compute(left_rpm_target, left_rpm_filtered, MAX_PWM, 10);
       }
-
-      vehicleGo(right_pwm, left_pwm);
-      
       digitalWrite(RED_LED, HIGH);
       digitalWrite(BLUE_LED, LOW);
     }
-
+    vehicleGo(right_pwm, left_pwm);
     write_servo();
   }
 }
