@@ -27,7 +27,7 @@
 
 
 // Receiver PIN
-#define NUM_CH 8
+#define NUM_CH 5
 #define PIN_CH_1 A8
 #define PIN_CH_2 A9
 #define PIN_CH_3 A10
@@ -66,7 +66,7 @@
 // Constants
 #define LOOP_TIME 10                // in milliseconds
 #define PERIOD_TIME 2*pow(10,6)     // in microseconds
-#define RECEIVER_LPF_CUT_OFF_FREQ 1 // in Hertz (Hz)
+#define RECEIVER_LPF_CUT_OFF_FREQ 0.25 // in Hertz (Hz)
 #define ENC_LPF_CUT_OFF_FREQ 3      // in Hertz (Hz)
 #define PWM_THRESHOLD 150           // in microseconds of receiver signal
 #define MAX_RPM_MOVE 180             // in RPM for longitudinal movement
@@ -79,13 +79,13 @@
 #define DISARMED 0x01               // disarmed condition
 #define HMC5983_ADDRESS 0x1E        // magnetometer I2C address
 
-#define KP_RIGHT_MOTOR 1.0
-#define KI_RIGHT_MOTOR 0.1
-#define KD_RIGHT_MOTOR 10.0
+#define KP_RIGHT_MOTOR 5.0
+#define KI_RIGHT_MOTOR 0.03
+#define KD_RIGHT_MOTOR 0.0
 
-#define KP_LEFT_MOTOR 1.0
-#define KI_LEFT_MOTOR 0.1
-#define KD_LEFT_MOTOR 10.0
+#define KP_LEFT_MOTOR 5.0
+#define KI_LEFT_MOTOR 0.03
+#define KD_LEFT_MOTOR 0.0
 
 Motor RightMotor(RIGHT_MOTOR_REN_PIN, RIGHT_MOTOR_LEN_PIN, RIGHT_MOTOR_PWM_PIN);
 Motor LeftMotor(LEFT_MOTOR_LEN_PIN, LEFT_MOTOR_REN_PIN, LEFT_MOTOR_PWM_PIN);
@@ -177,7 +177,7 @@ void callback_function( const slam_itbdelabo::HardwareCommand& msg){
   right_motor_speed_ = msg.right_motor_speed;
   left_motor_speed_ = msg.left_motor_speed;
 
-  String OmegaString = String(String(dt) + ", Left RPM: " + String(left_motor_speed_,3) + " RPM, Right RPM: " + String(right_motor_speed_,3) + " RPM.");
+  String OmegaString = String(String(dt) + ", " + String(current_channel) + ", Left RPM: " + String(left_motor_speed_,2) + " RPM, Right RPM: " + String(right_motor_speed_,2) + " RPM.");
   char OmegaInfo[100]; OmegaString.toCharArray(OmegaInfo, 100);
   nh.loginfo(OmegaInfo);
 }
@@ -335,6 +335,7 @@ void update_cmd(){
           turn_value = 0;
       }
       
+      
       right_rpm_target = move_value - turn_value;
       left_rpm_target = move_value + turn_value;
       
@@ -345,14 +346,14 @@ void update_cmd(){
       } else if (right_rpm_target == 0 && left_rpm_target != 0) {
           right_pwm = 0;
           RightMotorPID.reset();
-          left_pwm = LeftMotorPID.compute(left_rpm_target, left_rpm_filtered, MAX_PWM, 10);
+          left_pwm = LeftMotorPID.compute(left_rpm_target, left_rpm_filtered, MAX_PWM, dt);
       } else if (right_rpm_target != 0 && left_rpm_target == 0) {
           left_pwm = 0;
           LeftMotorPID.reset();
-          right_pwm = RightMotorPID.compute(right_rpm_target, right_rpm_filtered, MAX_PWM, 10);
+          right_pwm = RightMotorPID.compute(right_rpm_target, right_rpm_filtered, MAX_PWM, dt);
       } else {
-          right_pwm = RightMotorPID.compute(right_rpm_target, right_rpm_filtered, MAX_PWM, 10);
-          left_pwm = LeftMotorPID.compute(left_rpm_target, left_rpm_filtered, MAX_PWM, 10);
+          right_pwm = RightMotorPID.compute(right_rpm_target, right_rpm_filtered, MAX_PWM, dt);
+          left_pwm = LeftMotorPID.compute(left_rpm_target, left_rpm_filtered, MAX_PWM, dt);
       }
       //------------------------------------------------------------------//
       
@@ -370,14 +371,14 @@ void update_cmd(){
       } else if (right_rpm_target == 0 && left_rpm_target != 0) {
           right_pwm = 0;
           RightMotorPID.reset();
-          left_pwm = LeftMotorPID.compute(left_rpm_target, left_rpm_filtered, MAX_PWM, 10);
+          left_pwm = LeftMotorPID.compute(left_rpm_target, left_rpm_filtered, MAX_PWM, dt);
       } else if (right_rpm_target != 0 && left_rpm_target == 0) {
           left_pwm = 0;
           LeftMotorPID.reset();
-          right_pwm = RightMotorPID.compute(right_rpm_target, right_rpm_filtered, MAX_PWM, 10);
+          right_pwm = RightMotorPID.compute(right_rpm_target, right_rpm_filtered, MAX_PWM, dt);
       } else {
-          right_pwm = RightMotorPID.compute(right_rpm_target, right_rpm_filtered, MAX_PWM, 10);
-          left_pwm = LeftMotorPID.compute(left_rpm_target, left_rpm_filtered, MAX_PWM, 10);
+          right_pwm = RightMotorPID.compute(right_rpm_target, right_rpm_filtered, MAX_PWM, dt);
+          left_pwm = LeftMotorPID.compute(left_rpm_target, left_rpm_filtered, MAX_PWM, dt);
       }
       digitalWrite(RED_LED, HIGH);
       digitalWrite(BLUE_LED, LOW);
